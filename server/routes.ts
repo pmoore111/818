@@ -4,7 +4,9 @@ import { storage } from "./storage";
 import { insertAccountSchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import multer from "multer";
-import * as pdfParseModule from "pdf-parse";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -216,18 +218,8 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/transactions/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      await storage.deleteTransaction(id);
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting transaction:", error);
-      res.status(500).json({ error: "Failed to delete transaction" });
-    }
-  });
-
   // Delete transactions by date range (for statement period deletion)
+  // This route MUST come before /api/transactions/:id to avoid matching "by-date-range" as an ID
   app.delete("/api/transactions/by-date-range", async (req, res) => {
     try {
       const { accountId, startDate, endDate } = req.body;
@@ -249,6 +241,17 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/transactions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTransaction(id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting transaction:", error);
+      res.status(500).json({ error: "Failed to delete transaction" });
+    }
+  });
+
   // Parse PDF statement
   app.post("/api/parse-pdf", upload.single('file'), async (req, res) => {
     try {
@@ -256,7 +259,6 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
       const pdfData = await pdfParse(req.file.buffer);
       const text = pdfData.text;
       
