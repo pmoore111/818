@@ -65,14 +65,20 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <span className="text-lg font-bold text-primary-foreground">8:18</span>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
+              <span className="text-lg font-bold text-primary-foreground">8:18</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="font-semibold text-sidebar-foreground">8:18</span>
+              <span className="text-xs text-muted-foreground">Finance & Credit</span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="font-semibold text-sidebar-foreground">8:18</span>
-            <span className="text-xs text-muted-foreground">Finance & Credit</span>
-          </div>
+          <p className="text-xs text-muted-foreground italic leading-relaxed">
+            "But remember the LORD your God, for it is he who gives you the ability to produce wealth."
+            <span className="block text-right mt-1 not-italic">— Deuteronomy 8:18</span>
+          </p>
         </div>
       </SidebarHeader>
 
