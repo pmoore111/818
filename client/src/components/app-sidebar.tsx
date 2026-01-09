@@ -67,11 +67,11 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Wallet className="h-5 w-5 text-primary-foreground" />
+            <span className="text-lg font-bold text-primary-foreground">8:18</span>
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-sidebar-foreground">FinanceTracker</span>
-            <span className="text-xs text-muted-foreground">Private Dashboard</span>
+            <span className="font-semibold text-sidebar-foreground">8:18</span>
+            <span className="text-xs text-muted-foreground">Finance & Credit</span>
           </div>
         </div>
       </SidebarHeader>

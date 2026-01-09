@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -64,31 +66,23 @@ interface ParsedRow {
   error?: string;
 }
 
-const REQUIRED_MAPPINGS = ["date", "description", "amount"];
-
 function parseDate(dateStr: string): string | null {
   if (!dateStr) return null;
   
-  // Try common date formats
-  const formats = [
-    // ISO format
-    /^(\d{4})-(\d{2})-(\d{2})/,
-    // MM/DD/YYYY
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})/,
-    // DD/MM/YYYY
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})/,
-    // MM-DD-YYYY
-    /^(\d{1,2})-(\d{1,2})-(\d{4})/,
-  ];
+  // Handle ISO datetime format (2026-01-07 11:14:23)
+  const isoDateTimeMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})\s/);
+  if (isoDateTimeMatch) {
+    return `${isoDateTimeMatch[1]}-${isoDateTimeMatch[2]}-${isoDateTimeMatch[3]}`;
+  }
 
-  // Try ISO first
-  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  // Handle ISO date format (2026-01-07)
+  const isoMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
     return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
   }
 
-  // Try MM/DD/YYYY or MM-DD-YYYY
-  const mdyMatch = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  // Handle MM/DD/YYYY format
+  const mdyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mdyMatch) {
     const month = mdyMatch[1].padStart(2, "0");
     const day = mdyMatch[2].padStart(2, "0");
@@ -106,15 +100,37 @@ function parseDate(dateStr: string): string | null {
 }
 
 function parseAmount(amountStr: string): number | null {
-  if (!amountStr) return null;
+  if (amountStr === undefined || amountStr === null) return null;
+  
+  const str = String(amountStr).trim();
+  if (str === "" || str === "0" || str === "0.0") return 0;
   
   // Remove currency symbols, commas, and whitespace
-  const cleaned = amountStr
+  const cleaned = str
     .replace(/[$£€¥,\s]/g, "")
     .replace(/\(([^)]+)\)/, "-$1"); // Handle (100.00) as -100.00
 
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+function detectIfHasHeaders(firstRow: string[]): boolean {
+  // Check if the first row looks like headers
+  const headerPatterns = [
+    /timestamp/i, /date/i, /amount/i, /description/i, /merchant/i,
+    /transaction/i, /type/i, /status/i, /note/i, /memo/i, /currency/i
+  ];
+  
+  const matchCount = firstRow.filter(cell => 
+    headerPatterns.some(pattern => pattern.test(cell))
+  ).length;
+  
+  // If 2+ cells match header patterns, likely has headers
+  return matchCount >= 2;
+}
+
+function generateColumnNames(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => `Column ${i + 1}`);
 }
 
 export function CSVImportDialog({
@@ -126,6 +142,7 @@ export function CSVImportDialog({
   const [step, setStep] = useState<Step>("upload");
   const [csvData, setCsvData] = useState<string[][]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  const [hasHeaders, setHasHeaders] = useState(true);
   const [mapping, setMapping] = useState<ColumnMapping>({
     date: "",
     description: "",
@@ -143,11 +160,97 @@ export function CSVImportDialog({
     setStep("upload");
     setCsvData([]);
     setHeaders([]);
+    setHasHeaders(true);
     setMapping({ date: "", description: "", amount: "", category: "" });
     setSelectedAccountId("");
     setParsedRows([]);
     setFileName("");
   };
+
+  const processCSV = useCallback((data: string[][], detectHeaders: boolean) => {
+    if (data.length === 0) return;
+    
+    const firstRow = data[0];
+    const detectedHasHeaders = detectHeaders ? detectIfHasHeaders(firstRow) : hasHeaders;
+    setHasHeaders(detectedHasHeaders);
+    
+    let headerRow: string[];
+    let dataRows: string[][];
+    
+    if (detectedHasHeaders) {
+      headerRow = firstRow;
+      dataRows = data.slice(1);
+    } else {
+      headerRow = generateColumnNames(firstRow.length);
+      dataRows = data;
+    }
+    
+    setHeaders(headerRow);
+    setCsvData(dataRows.filter((row) => row.some((cell) => cell?.trim())));
+    
+    // Auto-detect column mappings
+    const autoMapping: ColumnMapping = {
+      date: "",
+      description: "",
+      amount: "",
+      category: "",
+    };
+    
+    headerRow.forEach((header, index) => {
+      const headerLower = header.toLowerCase().trim();
+      
+      // Date detection
+      if (headerLower.includes("date") || headerLower.includes("timestamp") || headerLower.includes("posted")) {
+        if (!autoMapping.date) autoMapping.date = header;
+      }
+      
+      // Description detection
+      if (headerLower.includes("description") || headerLower.includes("memo") || 
+          headerLower.includes("merchant") || headerLower.includes("payee")) {
+        if (!autoMapping.description) autoMapping.description = header;
+      }
+      
+      // Amount detection
+      if (headerLower.includes("amount") || headerLower.includes("debit") || headerLower.includes("credit")) {
+        if (!autoMapping.amount) autoMapping.amount = header;
+      }
+      
+      // Category detection
+      if (headerLower.includes("category") || headerLower.includes("type")) {
+        if (!autoMapping.category) autoMapping.category = header;
+      }
+    });
+    
+    // For headerless CSVs (like Premier Credit Card), try to detect by position/content
+    if (!detectedHasHeaders && dataRows.length > 0) {
+      const sampleRow = dataRows[0];
+      
+      sampleRow.forEach((cell, index) => {
+        const trimmed = cell?.trim() || "";
+        
+        // Check if it looks like a date
+        if (!autoMapping.date && (parseDate(trimmed) !== null)) {
+          autoMapping.date = headerRow[index];
+        }
+        
+        // Check if it looks like a number (amount)
+        if (!autoMapping.amount && /^-?\d+\.?\d*$/.test(trimmed.replace(/[$,]/g, ""))) {
+          // Skip if it looks like a reference number (long alphanumeric)
+          if (!/[A-Za-z]/.test(trimmed)) {
+            autoMapping.amount = headerRow[index];
+          }
+        }
+      });
+      
+      // For Premier format: Date, Reference, Amount, Description
+      // The last column is usually description
+      if (!autoMapping.description && headerRow.length >= 4) {
+        autoMapping.description = headerRow[headerRow.length - 1];
+      }
+    }
+    
+    setMapping(autoMapping);
+  }, [hasHeaders]);
 
   const handleFileUpload = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,45 +262,9 @@ export function CSVImportDialog({
       Papa.parse(file, {
         complete: (results) => {
           const data = results.data as string[][];
-          if (data.length > 1) {
-            setHeaders(data[0]);
-            setCsvData(data.slice(1).filter((row) => row.some((cell) => cell.trim())));
+          if (data.length > 0) {
+            processCSV(data, true);
             setStep("mapping");
-
-            // Auto-detect common column names
-            const headerLower = data[0].map((h) => h.toLowerCase().trim());
-            const autoMapping: ColumnMapping = {
-              date: "",
-              description: "",
-              amount: "",
-              category: "",
-            };
-
-            headerLower.forEach((header, index) => {
-              if (header.includes("date") || header.includes("posted")) {
-                autoMapping.date = data[0][index];
-              }
-              if (
-                header.includes("description") ||
-                header.includes("memo") ||
-                header.includes("payee") ||
-                header.includes("merchant")
-              ) {
-                autoMapping.description = data[0][index];
-              }
-              if (
-                header.includes("amount") ||
-                header.includes("debit") ||
-                header.includes("credit")
-              ) {
-                autoMapping.amount = data[0][index];
-              }
-              if (header.includes("category") || header.includes("type")) {
-                autoMapping.category = data[0][index];
-              }
-            });
-
-            setMapping(autoMapping);
           }
         },
         error: (error) => {
@@ -209,8 +276,28 @@ export function CSVImportDialog({
         },
       });
     },
-    [toast]
+    [toast, processCSV]
   );
+
+  const handleHeaderToggle = (checked: boolean) => {
+    setHasHeaders(checked);
+    // Reprocess with new header setting
+    const allData = hasHeaders ? [headers, ...csvData] : csvData;
+    
+    if (checked) {
+      // First row becomes headers
+      setHeaders(allData[0] || []);
+      setCsvData(allData.slice(1));
+    } else {
+      // Generate column names, first row becomes data
+      const newHeaders = generateColumnNames(allData[0]?.length || 0);
+      setHeaders(newHeaders);
+      setCsvData(allData);
+    }
+    
+    // Reset mapping when toggling
+    setMapping({ date: "", description: "", amount: "", category: "" });
+  };
 
   const handleMappingComplete = () => {
     if (!mapping.date || !mapping.description || !mapping.amount || !selectedAccountId) {
@@ -251,7 +338,10 @@ export function CSVImportDialog({
       };
     });
 
-    setParsedRows(parsed);
+    // Filter out zero-amount rows (often authorization holds)
+    const filteredParsed = parsed.filter(row => row.amount !== 0 || !row.isValid);
+    
+    setParsedRows(filteredParsed);
     setStep("preview");
   };
 
@@ -298,6 +388,9 @@ export function CSVImportDialog({
             <FileSpreadsheet className="h-5 w-5" />
             Import {accountType === "personal" ? "Personal" : "Business"} Statement
           </DialogTitle>
+          <DialogDescription>
+            Upload a CSV file from your bank or credit card statement
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2 mb-4">
@@ -327,8 +420,11 @@ export function CSVImportDialog({
         {step === "upload" && (
           <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-lg">
             <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-4">
-              Upload a CSV file from your bank or credit card statement
+            <p className="text-muted-foreground mb-2">
+              Upload a CSV file from your bank or credit card
+            </p>
+            <p className="text-xs text-muted-foreground mb-4">
+              Supports various formats including Lili, Premier, and more
             </p>
             <Label htmlFor="csv-file" className="cursor-pointer">
               <Input
@@ -351,10 +447,22 @@ export function CSVImportDialog({
 
         {step === "mapping" && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-              <FileSpreadsheet className="h-4 w-4" />
-              <span className="text-sm font-medium">{fileName}</span>
-              <Badge variant="secondary">{csvData.length} rows</Badge>
+            <div className="flex items-center justify-between gap-2 p-3 bg-muted rounded-lg">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                <span className="text-sm font-medium">{fileName}</span>
+                <Badge variant="secondary">{csvData.length} rows</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="has-headers"
+                  checked={hasHeaders}
+                  onCheckedChange={(checked) => handleHeaderToggle(!!checked)}
+                />
+                <Label htmlFor="has-headers" className="text-sm cursor-pointer">
+                  First row is header
+                </Label>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -457,8 +565,8 @@ export function CSVImportDialog({
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      {headers.slice(0, 5).map((header) => (
-                        <TableHead key={header} className="text-xs">
+                      {headers.slice(0, 6).map((header, i) => (
+                        <TableHead key={i} className="text-xs">
                           {header}
                         </TableHead>
                       ))}
@@ -467,9 +575,9 @@ export function CSVImportDialog({
                   <TableBody>
                     {csvData.slice(0, 3).map((row, i) => (
                       <TableRow key={i}>
-                        {row.slice(0, 5).map((cell, j) => (
+                        {row.slice(0, 6).map((cell, j) => (
                           <TableCell key={j} className="text-xs">
-                            {cell.substring(0, 30)}
+                            {cell?.substring(0, 30)}
                           </TableCell>
                         ))}
                       </TableRow>
