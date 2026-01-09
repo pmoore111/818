@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CSVImportDialog } from "@/components/csv-import-dialog";
+import { CSVImportDialog } from "@/components/statement-import-dialog";
 import {
   Plus,
   CreditCard,

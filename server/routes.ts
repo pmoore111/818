@@ -3,11 +3,117 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
 import OpenAI from "openai";
+import multer from "multer";
+import * as pdfParseModule from "pdf-parse";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+interface ParsedPDFTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  authCode?: string;
+}
+
+function parseLiliStatementPDF(text: string): ParsedPDFTransaction[] {
+  const transactions: ParsedPDFTransaction[] = [];
+  const lines = text.split('\n');
+  
+  // Match transaction lines: MM/DD/YYYY followed by auth code and description
+  const txPattern = /^(\d{2}\/\d{2}\/\d{4})\s+(\d+)\s+(.+?)\s+\$?([-]?\d+\.?\d*)\s+\$?[-]?\d+\.?\d*$/;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const match = trimmed.match(txPattern);
+    
+    if (match) {
+      const [, dateStr, authCode, description, amountStr] = match;
+      
+      // Parse date from MM/DD/YYYY to YYYY-MM-DD
+      const [month, day, year] = dateStr.split('/');
+      const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      
+      // Parse amount
+      const amount = parseFloat(amountStr.replace(/[$,]/g, ''));
+      
+      transactions.push({
+        date: formattedDate,
+        description: description.trim(),
+        amount,
+        authCode,
+      });
+    }
+  }
+  
+  return transactions;
+}
+
+function parseGenericStatementPDF(text: string): ParsedPDFTransaction[] {
+  const transactions: ParsedPDFTransaction[] = [];
+  const lines = text.split('\n');
+  
+  // Try to find lines that look like transactions
+  // Pattern: Date (various formats), description, amount
+  const datePatterns = [
+    /^(\d{2}\/\d{2}\/\d{4})/,  // MM/DD/YYYY
+    /^(\d{4}-\d{2}-\d{2})/,    // YYYY-MM-DD
+    /^(\d{2}-\d{2}-\d{4})/,    // MM-DD-YYYY
+  ];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    for (const pattern of datePatterns) {
+      const dateMatch = trimmed.match(pattern);
+      if (dateMatch) {
+        // Try to extract amount (look for dollar amounts)
+        const amountMatch = trimmed.match(/\$?([-]?\d{1,3}(?:,\d{3})*\.?\d{0,2})(?:\s|$)/g);
+        
+        if (amountMatch && amountMatch.length > 0) {
+          const dateStr = dateMatch[1];
+          let formattedDate = dateStr;
+          
+          // Convert to YYYY-MM-DD format
+          if (dateStr.includes('/')) {
+            const [month, day, year] = dateStr.split('/');
+            formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          } else if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
+            const [month, day, year] = dateStr.split('-');
+            formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+          }
+          
+          // Get the first amount found
+          const amountStr = amountMatch[0].replace(/[$,\s]/g, '');
+          const amount = parseFloat(amountStr);
+          
+          // Extract description (everything between date and amount)
+          const dateEndIdx = trimmed.indexOf(dateMatch[1]) + dateMatch[1].length;
+          const amountStartIdx = trimmed.lastIndexOf(amountMatch[amountMatch.length - 1]);
+          let description = trimmed.substring(dateEndIdx, amountStartIdx).trim();
+          
+          // Clean up description (remove auth codes if present)
+          description = description.replace(/^\d+\s+/, '').trim();
+          
+          if (description && !isNaN(amount)) {
+            transactions.push({
+              date: formattedDate,
+              description,
+              amount,
+            });
+          }
+        }
+        break;
+      }
+    }
+  }
+  
+  return transactions;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -140,6 +246,36 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error deleting transactions:", error);
       res.status(500).json({ error: "Failed to delete transactions" });
+    }
+  });
+
+  // Parse PDF statement
+  app.post("/api/parse-pdf", upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+      const pdfData = await pdfParse(req.file.buffer);
+      const text = pdfData.text;
+      
+      // Try Lili format first
+      let transactions = parseLiliStatementPDF(text);
+      
+      // If no transactions found, try generic parser
+      if (transactions.length === 0) {
+        transactions = parseGenericStatementPDF(text);
+      }
+
+      res.json({
+        success: true,
+        transactions,
+        rawText: text.substring(0, 2000), // Preview for debugging
+      });
+    } catch (error) {
+      console.error("Error parsing PDF:", error);
+      res.status(500).json({ error: "Failed to parse PDF" });
     }
   });
 
