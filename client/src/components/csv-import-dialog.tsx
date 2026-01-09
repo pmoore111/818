@@ -185,7 +185,12 @@ export function CSVImportDialog({
       dataRows = data;
     }
     
-    setHeaders(headerRow);
+    // Sanitize headers - replace empty strings with column names
+    const sanitizedHeaders = headerRow.map((h, i) => 
+      h?.trim() ? h.trim() : `Column ${i + 1}`
+    );
+    
+    setHeaders(sanitizedHeaders);
     setCsvData(dataRows.filter((row) => row.some((cell) => cell?.trim())));
     
     // Auto-detect column mappings
@@ -285,8 +290,12 @@ export function CSVImportDialog({
     const allData = hasHeaders ? [headers, ...csvData] : csvData;
     
     if (checked) {
-      // First row becomes headers
-      setHeaders(allData[0] || []);
+      // First row becomes headers - sanitize to prevent empty strings
+      const rawHeaders = allData[0] || [];
+      const sanitizedHeaders = rawHeaders.map((h, i) => 
+        h?.trim() ? h.trim() : `Column ${i + 1}`
+      );
+      setHeaders(sanitizedHeaders);
       setCsvData(allData.slice(1));
     } else {
       // Generate column names, first row becomes data
