@@ -541,14 +541,14 @@ export function CSVImportDialog({
               <div>
                 <Label>Category Column (optional)</Label>
                 <Select
-                  value={mapping.category || ""}
-                  onValueChange={(v) => setMapping({ ...mapping, category: v })}
+                  value={mapping.category || "__none__"}
+                  onValueChange={(v) => setMapping({ ...mapping, category: v === "__none__" ? "" : v })}
                 >
                   <SelectTrigger data-testid="select-category-column">
                     <SelectValue placeholder="Select column" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="__none__">None</SelectItem>
                     {headers.map((header) => (
                       <SelectItem key={header} value={header}>
                         {header}
