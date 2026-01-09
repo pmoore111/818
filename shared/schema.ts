@@ -29,6 +29,7 @@ export const accounts = pgTable("accounts", {
   creditScore: integer("credit_score"),
   interestRate: numeric("interest_rate", { precision: 5, scale: 2 }),
   dueDay: integer("due_day"), // day of month for payment due
+  statementDay: integer("statement_day"), // day of month when statement period starts
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

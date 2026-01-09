@@ -19,7 +19,7 @@ import {
   messages,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, lte } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -40,6 +40,7 @@ export interface IStorage {
   getTransactionsByAccount(accountId: number): Promise<Transaction[]>;
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number): Promise<void>;
+  deleteTransactionsByDateRange(accountId: number, startDate: string, endDate: string): Promise<number>;
 
   // Obligations
   getObligations(): Promise<Obligation[]>;
@@ -131,6 +132,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTransaction(id: number): Promise<void> {
     await db.delete(transactions).where(eq(transactions.id, id));
+  }
+
+  async deleteTransactionsByDateRange(accountId: number, startDate: string, endDate: string): Promise<number> {
+    const deleted = await db.delete(transactions)
+      .where(
+        and(
+          eq(transactions.accountId, accountId),
+          gte(transactions.date, startDate),
+          lte(transactions.date, endDate)
+        )
+      )
+      .returning();
+    return deleted.length;
   }
 
   // Obligations

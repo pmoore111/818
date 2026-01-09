@@ -121,6 +121,28 @@ export async function registerRoutes(
     }
   });
 
+  // Delete transactions by date range (for statement period deletion)
+  app.delete("/api/transactions/by-date-range", async (req, res) => {
+    try {
+      const { accountId, startDate, endDate } = req.body;
+      
+      if (!accountId || !startDate || !endDate) {
+        return res.status(400).json({ error: "accountId, startDate, and endDate are required" });
+      }
+
+      const deletedCount = await storage.deleteTransactionsByDateRange(
+        parseInt(accountId),
+        startDate,
+        endDate
+      );
+
+      res.json({ deleted: deletedCount });
+    } catch (error) {
+      console.error("Error deleting transactions:", error);
+      res.status(500).json({ error: "Failed to delete transactions" });
+    }
+  });
+
   // Bulk import transactions (for CSV import)
   app.post("/api/transactions/bulk", async (req, res) => {
     try {
