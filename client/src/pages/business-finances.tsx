@@ -236,6 +236,7 @@ export default function BusinessFinances() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set());
   const [deleteConfirm, setDeleteConfirm] = useState<{ period: StatementPeriod; accountId: number } | null>(null);
+  const [deleteAccountConfirm, setDeleteAccountConfirm] = useState<number | null>(null);
   const { toast } = useToast();
 
   const { data: accounts, isLoading: accountsLoading } = useQuery<Account[]>({
@@ -313,6 +314,20 @@ export default function BusinessFinances() {
     },
     onError: () => {
       toast({ title: "Failed to update account", variant: "destructive" });
+    },
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/accounts/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      setDeleteAccountConfirm(null);
+      toast({ title: "Account deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete account", variant: "destructive" });
     },
   });
 
@@ -419,16 +434,16 @@ export default function BusinessFinances() {
                     name="category"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Category</FormLabel>
+                        <FormLabel>Account Type</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger data-testid="select-business-category">
-                              <SelectValue placeholder="Select category" />
+                              <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="checking">Business Checking</SelectItem>
-                            <SelectItem value="savings">Business Savings</SelectItem>
+                            <SelectItem value="checking">Business Bank Account - Checking</SelectItem>
+                            <SelectItem value="savings">Business Bank Account - Savings</SelectItem>
                             <SelectItem value="credit_card">Business Credit Card</SelectItem>
                             <SelectItem value="loan">Business Loan</SelectItem>
                             <SelectItem value="investment">Business Investment</SelectItem>
@@ -438,47 +453,51 @@ export default function BusinessFinances() {
                       </FormItem>
                     )}
                   />
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={accountForm.control}
-                      name="balance"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Starting Balance</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="0.00"
-                              {...field}
-                              data-testid="input-business-balance"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                  {(accountForm.watch("category") === "credit_card" || accountForm.watch("category") === "checking" || accountForm.watch("category") === "savings") && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={accountForm.control}
+                        name="balance"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{accountForm.watch("category") === "credit_card" ? "Current Balance Owed" : "Current Balance"}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                {...field}
+                                data-testid="input-business-balance"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {accountForm.watch("category") === "credit_card" && (
+                        <FormField
+                          control={accountForm.control}
+                          name="dueDay"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Due Day (of month)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max="31"
+                                  placeholder="15"
+                                  {...field}
+                                  data-testid="input-due-day"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       )}
-                    />
-                    <FormField
-                      control={accountForm.control}
-                      name="statementDay"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Statement Day</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min="1"
-                              max="31"
-                              placeholder="1"
-                              {...field}
-                              data-testid="input-business-statement-day"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={accountForm.control}
@@ -601,6 +620,21 @@ export default function BusinessFinances() {
                 />
                 <FormField
                   control={accountForm.control}
+                  name="dueDay"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Due Day</FormLabel>
+                      <FormControl>
+                        <Input type="number" min="1" max="31" {...field} data-testid="input-edit-business-due-day" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={accountForm.control}
                   name="creditScore"
                   render={({ field }) => (
                     <FormItem>
@@ -612,8 +646,6 @@ export default function BusinessFinances() {
                     </FormItem>
                   )}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={accountForm.control}
                   name="creditLimit"
@@ -627,32 +659,55 @@ export default function BusinessFinances() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={accountForm.control}
-                  name="interestRate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Interest Rate %</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" {...field} data-testid="input-edit-business-interest-rate" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={updateAccountMutation.isPending}
-                data-testid="button-update-business-account"
-              >
-                {updateAccountMutation.isPending ? "Saving..." : "Save Changes"}
-              </Button>
+              <div className="flex justify-between gap-4 mt-8">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setDeleteAccountConfirm(editingAccount.id)}
+                  data-testid="button-delete-business-account"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Account
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateAccountMutation.isPending}
+                  data-testid="button-update-business-account"
+                >
+                  {updateAccountMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
             </form>
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Account Delete Confirmation */}
+      <AlertDialog
+        open={!!deleteAccountConfirm}
+        onOpenChange={(open) => !open && setDeleteAccountConfirm(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this account and all its transactions.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground"
+              onClick={() => deleteAccountConfirm && deleteAccountMutation.mutate(deleteAccountConfirm)}
+              disabled={deleteAccountMutation.isPending}
+            >
+              {deleteAccountMutation.isPending ? "Deleting..." : "Delete Account"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Statement Confirmation */}
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
