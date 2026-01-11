@@ -692,6 +692,17 @@ export default function Calendar() {
                         </div>
                         <p className="font-mono text-sm tabular-nums mt-1">
                           {formatCurrency(obligation.amount)}
+                          {(() => {
+                            const linkedAccount = accounts?.find(a => a.id === obligation.accountId);
+                            if (linkedAccount && linkedAccount.category === "credit_card") {
+                              return (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  (Balance: {formatCurrency(linkedAccount.balance)})
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </p>
                         {obligation.notes && (
                           <p className="text-xs text-muted-foreground mt-1">
@@ -756,9 +767,22 @@ export default function Calendar() {
                         </p>
                       </div>
                     </div>
-                    <span className="font-mono text-sm tabular-nums">
-                      {formatCurrency(obligation.amount)}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-mono text-sm tabular-nums">
+                        {formatCurrency(obligation.amount)}
+                      </span>
+                      {(() => {
+                        const linkedAccount = accounts?.find(a => a.id === obligation.accountId);
+                        if (linkedAccount && linkedAccount.category === "credit_card") {
+                          return (
+                            <p className="text-xs text-muted-foreground font-mono tabular-nums">
+                              Bal: {formatCurrency(linkedAccount.balance)}
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
                   </div>
                 ))}
               </div>
