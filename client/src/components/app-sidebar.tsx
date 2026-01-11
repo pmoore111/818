@@ -5,6 +5,7 @@ import {
   Briefcase,
   CalendarDays,
   MessageSquare,
+  CreditCard,
   LogOut,
 } from "lucide-react";
 import {
@@ -57,6 +58,11 @@ const toolsItems = [
     title: "AI Assistant",
     url: "/assistant",
     icon: MessageSquare,
+  },
+  {
+    title: "Subscription",
+    url: "/subscription",
+    icon: CreditCard,
   },
 ];
 
@@ -178,12 +184,14 @@ export function AppSidebar() {
         {user && (
           <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent p-3">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={user.profileImageUrl || undefined} alt={user.firstName || "User"} />
-              <AvatarFallback>{user.firstName?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+              <AvatarFallback>{user.email?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col flex-1 min-w-0">
               <span className="text-sm font-medium text-sidebar-foreground truncate">
-                {user.firstName || user.email || "User"}
+                {user.email || "User"}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {user.subscription_tier || 'free'}
               </span>
             </div>
             <Button

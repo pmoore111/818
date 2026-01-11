@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -14,7 +14,9 @@ import PersonalFinances from "@/pages/personal-finances";
 import BusinessFinances from "@/pages/business-finances";
 import Calendar from "@/pages/calendar";
 import Assistant from "@/pages/assistant";
+import Subscription from "@/pages/subscription";
 import Landing from "@/pages/landing";
+import Auth from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -25,6 +27,7 @@ function Router() {
       <Route path="/business" component={BusinessFinances} />
       <Route path="/calendar" component={Calendar} />
       <Route path="/assistant" component={Assistant} />
+      <Route path="/subscription" component={Subscription} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -56,6 +59,7 @@ function AuthenticatedApp() {
 
 function AppContent() {
   const { isLoading, isAuthenticated } = useAuth();
+  const [location] = useLocation();
 
   if (isLoading) {
     return (
@@ -63,6 +67,10 @@ function AppContent() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+
+  if (location === "/auth") {
+    return <Auth />;
   }
 
   if (!isAuthenticated) {

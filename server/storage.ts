@@ -1,32 +1,116 @@
-import {
-  type Account,
-  type InsertAccount,
-  type Transaction,
-  type InsertTransaction,
-  type Obligation,
-  type InsertObligation,
-  type Conversation,
-  type InsertConversation,
-  type Message,
-  type InsertMessage,
-  accounts,
-  transactions,
-  obligations,
-  conversations,
-  messages,
-} from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { supabase, getSupabaseClient } from "./supabase";
+
+export interface Account {
+  id: number;
+  user_id: string;
+  name: string;
+  type: string;
+  category: string;
+  balance: string;
+  credit_limit?: string | null;
+  credit_score?: number | null;
+  interest_rate?: string | null;
+  due_day?: number | null;
+  statement_day?: number | null;
+  created_at: string;
+}
+
+export interface InsertAccount {
+  name: string;
+  type: string;
+  category: string;
+  balance: string;
+  credit_limit?: string | null;
+  credit_score?: number | null;
+  interest_rate?: string | null;
+  due_day?: number | null;
+  statement_day?: number | null;
+}
+
+export interface Transaction {
+  id: number;
+  user_id: string;
+  account_id: number;
+  description: string;
+  amount: string;
+  category: string;
+  subcategory?: string | null;
+  date: string;
+  created_at: string;
+}
+
+export interface InsertTransaction {
+  account_id: number;
+  description: string;
+  amount: string;
+  category: string;
+  subcategory?: string | null;
+  date: string;
+}
+
+export interface Obligation {
+  id: number;
+  user_id: string;
+  account_id?: number | null;
+  name: string;
+  amount: string;
+  type: string;
+  category: string;
+  due_date: string;
+  is_recurring?: boolean;
+  frequency?: string | null;
+  is_paid?: boolean;
+  website_url?: string | null;
+  notes?: string | null;
+  created_at: string;
+}
+
+export interface InsertObligation {
+  account_id?: number | null;
+  name: string;
+  amount: string;
+  type: string;
+  category: string;
+  due_date: string;
+  is_recurring?: boolean;
+  frequency?: string | null;
+  is_paid?: boolean;
+  website_url?: string | null;
+  notes?: string | null;
+}
+
+export interface Conversation {
+  id: number;
+  user_id: string;
+  title: string;
+  created_at: string;
+}
+
+export interface InsertConversation {
+  title: string;
+}
+
+export interface Message {
+  id: number;
+  conversation_id: number;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+export interface InsertMessage {
+  conversation_id: number;
+  role: string;
+  content: string;
+}
 
 export interface IStorage {
-  // Accounts
   getAccounts(userId: string): Promise<Account[]>;
   getAccount(userId: string, id: number): Promise<Account | undefined>;
   createAccount(userId: string, account: InsertAccount): Promise<Account>;
   updateAccount(userId: string, id: number, data: Partial<InsertAccount>): Promise<Account | undefined>;
   deleteAccount(userId: string, id: number): Promise<void>;
 
-  // Transactions
   getTransactions(userId: string): Promise<Transaction[]>;
   getTransaction(userId: string, id: number): Promise<Transaction | undefined>;
   getTransactionsByAccount(userId: string, accountId: number): Promise<Transaction[]>;
@@ -34,183 +118,291 @@ export interface IStorage {
   deleteTransaction(userId: string, id: number): Promise<void>;
   deleteTransactionsByDateRange(userId: string, accountId: number, startDate: string, endDate: string): Promise<number>;
 
-  // Obligations
   getObligations(userId: string): Promise<Obligation[]>;
   getObligation(userId: string, id: number): Promise<Obligation | undefined>;
   createObligation(userId: string, obligation: InsertObligation): Promise<Obligation>;
   updateObligation(userId: string, id: number, data: Partial<InsertObligation>): Promise<Obligation | undefined>;
   deleteObligation(userId: string, id: number): Promise<void>;
 
-  // Conversations
   getConversations(userId: string): Promise<Conversation[]>;
   getConversation(userId: string, id: number): Promise<Conversation | undefined>;
   createConversation(userId: string, title: string): Promise<Conversation>;
   deleteConversation(userId: string, id: number): Promise<void>;
 
-  // Messages
   getMessagesByConversation(userId: string, conversationId: number): Promise<Message[]>;
   createMessage(userId: string, conversationId: number, role: string, content: string): Promise<Message>;
 }
 
-export class DatabaseStorage implements IStorage {
-  // Accounts
+export class SupabaseStorage implements IStorage {
   async getAccounts(userId: string): Promise<Account[]> {
-    return db.select().from(accounts).where(eq(accounts.userId, userId)).orderBy(desc(accounts.createdAt));
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async getAccount(userId: string, id: number): Promise<Account | undefined> {
-    const [account] = await db.select().from(accounts).where(
-      and(eq(accounts.id, id), eq(accounts.userId, userId))
-    );
-    return account || undefined;
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || undefined;
   }
 
   async createAccount(userId: string, account: InsertAccount): Promise<Account> {
-    const [created] = await db.insert(accounts).values({ ...account, userId }).returning();
-    return created;
+    const { data, error } = await supabase
+      .from('accounts')
+      .insert({ ...account, user_id: userId })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async updateAccount(userId: string, id: number, data: Partial<InsertAccount>): Promise<Account | undefined> {
-    const [updated] = await db.update(accounts).set(data).where(
-      and(eq(accounts.id, id), eq(accounts.userId, userId))
-    ).returning();
+    const { data: updated, error } = await supabase
+      .from('accounts')
+      .update(data)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
     return updated || undefined;
   }
 
   async deleteAccount(userId: string, id: number): Promise<void> {
-    await db.delete(accounts).where(
-      and(eq(accounts.id, id), eq(accounts.userId, userId))
-    );
+    const { error } = await supabase
+      .from('accounts')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
   }
 
-  // Transactions
   async getTransactions(userId: string): Promise<Transaction[]> {
-    return db.select().from(transactions).where(eq(transactions.userId, userId)).orderBy(desc(transactions.date));
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async getTransaction(userId: string, id: number): Promise<Transaction | undefined> {
-    const [transaction] = await db.select().from(transactions).where(
-      and(eq(transactions.id, id), eq(transactions.userId, userId))
-    );
-    return transaction || undefined;
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || undefined;
   }
 
   async getTransactionsByAccount(userId: string, accountId: number): Promise<Transaction[]> {
-    return db.select().from(transactions).where(
-      and(eq(transactions.accountId, accountId), eq(transactions.userId, userId))
-    ).orderBy(desc(transactions.date));
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async createTransaction(userId: string, transaction: InsertTransaction): Promise<Transaction> {
-    const [created] = await db.insert(transactions).values({ ...transaction, userId }).returning();
-    
-    // Update account balance
-    const account = await this.getAccount(userId, transaction.accountId);
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert({ ...transaction, user_id: userId })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const account = await this.getAccount(userId, transaction.account_id);
     if (account) {
       const currentBalance = parseFloat(account.balance);
       const transactionAmount = parseFloat(transaction.amount);
       const newBalance = (currentBalance + transactionAmount).toFixed(2);
-      await this.updateAccount(userId, transaction.accountId, { balance: newBalance });
+      await this.updateAccount(userId, transaction.account_id, { balance: newBalance });
     }
-    
-    return created;
+
+    return data;
   }
 
   async deleteTransaction(userId: string, id: number): Promise<void> {
-    await db.delete(transactions).where(
-      and(eq(transactions.id, id), eq(transactions.userId, userId))
-    );
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
   }
 
   async deleteTransactionsByDateRange(userId: string, accountId: number, startDate: string, endDate: string): Promise<number> {
-    const deleted = await db.delete(transactions)
-      .where(
-        and(
-          eq(transactions.accountId, accountId),
-          eq(transactions.userId, userId),
-          gte(transactions.date, startDate),
-          lte(transactions.date, endDate)
-        )
-      )
-      .returning();
-    return deleted.length;
+    const { data, error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('account_id', accountId)
+      .eq('user_id', userId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .select();
+
+    if (error) throw error;
+    return data?.length || 0;
   }
 
-  // Obligations
   async getObligations(userId: string): Promise<Obligation[]> {
-    return db.select().from(obligations).where(eq(obligations.userId, userId)).orderBy(obligations.dueDate);
+    const { data, error } = await supabase
+      .from('obligations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('due_date', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async getObligation(userId: string, id: number): Promise<Obligation | undefined> {
-    const [obligation] = await db.select().from(obligations).where(
-      and(eq(obligations.id, id), eq(obligations.userId, userId))
-    );
-    return obligation || undefined;
+    const { data, error } = await supabase
+      .from('obligations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || undefined;
   }
 
   async createObligation(userId: string, obligation: InsertObligation): Promise<Obligation> {
-    const [created] = await db.insert(obligations).values({ ...obligation, userId }).returning();
-    return created;
+    const { data, error } = await supabase
+      .from('obligations')
+      .insert({ ...obligation, user_id: userId })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async updateObligation(userId: string, id: number, data: Partial<InsertObligation>): Promise<Obligation | undefined> {
-    const [updated] = await db.update(obligations).set(data).where(
-      and(eq(obligations.id, id), eq(obligations.userId, userId))
-    ).returning();
+    const { data: updated, error } = await supabase
+      .from('obligations')
+      .update(data)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
     return updated || undefined;
   }
 
   async deleteObligation(userId: string, id: number): Promise<void> {
-    await db.delete(obligations).where(
-      and(eq(obligations.id, id), eq(obligations.userId, userId))
-    );
+    const { error } = await supabase
+      .from('obligations')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw error;
   }
 
-  // Conversations
   async getConversations(userId: string): Promise<Conversation[]> {
-    return db.select().from(conversations).where(eq(conversations.userId, userId)).orderBy(desc(conversations.createdAt));
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async getConversation(userId: string, id: number): Promise<Conversation | undefined> {
-    const [conversation] = await db.select().from(conversations).where(
-      and(eq(conversations.id, id), eq(conversations.userId, userId))
-    );
-    return conversation || undefined;
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || undefined;
   }
 
   async createConversation(userId: string, title: string): Promise<Conversation> {
-    const [created] = await db.insert(conversations).values({ title, userId }).returning();
-    return created;
+    const { data, error } = await supabase
+      .from('conversations')
+      .insert({ title, user_id: userId })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 
   async deleteConversation(userId: string, id: number): Promise<void> {
-    // First verify the conversation belongs to this user
     const conversation = await this.getConversation(userId, id);
     if (conversation) {
-      await db.delete(messages).where(eq(messages.conversationId, id));
-      await db.delete(conversations).where(
-        and(eq(conversations.id, id), eq(conversations.userId, userId))
-      );
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+
+      if (error) throw error;
     }
   }
 
-  // Messages
   async getMessagesByConversation(userId: string, conversationId: number): Promise<Message[]> {
-    // First verify the conversation belongs to this user
     const conversation = await this.getConversation(userId, conversationId);
     if (!conversation) return [];
-    return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(messages.createdAt);
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data || [];
   }
 
   async createMessage(userId: string, conversationId: number, role: string, content: string): Promise<Message> {
-    // First verify the conversation belongs to this user
     const conversation = await this.getConversation(userId, conversationId);
     if (!conversation) {
       throw new Error("Conversation not found or not authorized");
     }
-    const [created] = await db.insert(messages).values({ conversationId, role, content }).returning();
-    return created;
+
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ conversation_id: conversationId, role, content })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new SupabaseStorage();

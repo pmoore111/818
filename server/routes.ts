@@ -1,15 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
-import { insertAccountSchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
+import { storage, InsertAccount, InsertTransaction, InsertObligation } from "./storage";
 import OpenAI from "openai";
 import multer from "multer";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { requireAuth, getUserId, type AuthRequest } from "./auth";
+import { supabase } from "./supabase";
+import Stripe from "stripe";
 
-// Helper to get userId from authenticated request
-function getUserId(req: Request): string {
-  return (req.user as any)?.claims?.sub;
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2024-12-18.acacia',
+});
 
 async function parsePDF(buffer: Buffer): Promise<{ text: string }> {
   const pdfParseModule = await import("pdf-parse");
@@ -130,12 +130,92 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Setup authentication (MUST be before other routes)
-  await setupAuth(app);
-  registerAuthRoutes(app);
+
+  // Auth routes
+  app.post("/api/auth/signup", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) {
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json({ user: data.user, session: data.session });
+    } catch (error) {
+      console.error("Signup error:", error);
+      res.status(500).json({ error: "Failed to sign up" });
+    }
+  });
+
+  app.post("/api/auth/signin", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        return res.status(400).json({ error: error.message });
+      }
+
+      res.json({ user: data.user, session: data.session });
+    } catch (error) {
+      console.error("Signin error:", error);
+      res.status(500).json({ error: "Failed to sign in" });
+    }
+  });
+
+  app.post("/api/auth/signout", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.substring(7);
+
+      if (token) {
+        await supabase.auth.signOut();
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Signout error:", error);
+      res.status(500).json({ error: "Failed to sign out" });
+    }
+  });
+
+  app.get("/api/auth/user", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.substring(7);
+
+      if (!token) {
+        return res.status(401).json({ error: "No token provided" });
+      }
+
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+
+      if (error || !user) {
+        return res.status(401).json({ error: "Invalid token" });
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      res.json({ user, profile });
+    } catch (error) {
+      console.error("Get user error:", error);
+      res.status(500).json({ error: "Failed to get user" });
+    }
+  });
 
   // Accounts API
-  app.get("/api/accounts", isAuthenticated, async (req, res) => {
+  app.get("/api/accounts", requireAuth, async (req: AuthRequest, res) => {
     try {
       const userId = getUserId(req);
       const accounts = await storage.getAccounts(userId);
@@ -146,7 +226,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounts/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/accounts/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -161,11 +241,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/accounts", isAuthenticated, async (req, res) => {
+  app.post("/api/accounts", requireAuth, async (req: AuthRequest, res) => {
     try {
       const userId = getUserId(req);
-      const validatedData = insertAccountSchema.parse(req.body);
-      const account = await storage.createAccount(userId, validatedData);
+      const account = await storage.createAccount(userId, req.body);
       res.status(201).json(account);
     } catch (error) {
       console.error("Error creating account:", error);
@@ -173,7 +252,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/accounts/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/accounts/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -188,7 +267,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/accounts/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/accounts/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -201,7 +280,7 @@ export async function registerRoutes(
   });
 
   // Transactions API
-  app.get("/api/transactions", isAuthenticated, async (req, res) => {
+  app.get("/api/transactions", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const transactions = await storage.getTransactions(userId);
@@ -212,7 +291,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/transactions/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/transactions/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -227,11 +306,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/transactions", isAuthenticated, async (req, res) => {
+  app.post("/api/transactions", requireAuth, async (req: AuthRequest, res) => {
     try {
       const userId = getUserId(req);
-      const validatedData = insertTransactionSchema.parse(req.body);
-      const transaction = await storage.createTransaction(userId, validatedData);
+      const transaction = await storage.createTransaction(userId, req.body);
       res.status(201).json(transaction);
     } catch (error) {
       console.error("Error creating transaction:", error);
@@ -241,7 +319,7 @@ export async function registerRoutes(
 
   // Delete transactions by date range (for statement period deletion)
   // This route MUST come before /api/transactions/:id to avoid matching "by-date-range" as an ID
-  app.delete("/api/transactions/by-date-range", isAuthenticated, async (req, res) => {
+  app.delete("/api/transactions/by-date-range", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const { accountId, startDate, endDate } = req.body;
@@ -264,7 +342,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/transactions/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -277,7 +355,7 @@ export async function registerRoutes(
   });
 
   // Parse PDF statement
-  app.post("/api/parse-pdf", isAuthenticated, upload.single('file'), async (req, res) => {
+  app.post("/api/parse-pdf", requireAuth, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -306,7 +384,7 @@ export async function registerRoutes(
   });
 
   // Bulk import transactions (for CSV import)
-  app.post("/api/transactions/bulk", isAuthenticated, async (req, res) => {
+  app.post("/api/transactions/bulk", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const { transactions } = req.body;
@@ -320,8 +398,7 @@ export async function registerRoutes(
 
       for (let i = 0; i < transactions.length; i++) {
         try {
-          const validatedData = insertTransactionSchema.parse(transactions[i]);
-          const transaction = await storage.createTransaction(userId, validatedData);
+          const transaction = await storage.createTransaction(userId, transactions[i]);
           imported.push(transaction);
         } catch (err) {
           errors.push({ index: i, error: err instanceof Error ? err.message : "Invalid data" });
@@ -340,7 +417,7 @@ export async function registerRoutes(
   });
 
   // Obligations API
-  app.get("/api/obligations", isAuthenticated, async (req, res) => {
+  app.get("/api/obligations", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const obligations = await storage.getObligations(userId);
@@ -351,7 +428,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/obligations/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/obligations/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -366,11 +443,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/obligations", isAuthenticated, async (req, res) => {
+  app.post("/api/obligations", requireAuth, async (req: AuthRequest, res) => {
     try {
       const userId = getUserId(req);
-      const validatedData = insertObligationSchema.parse(req.body);
-      const obligation = await storage.createObligation(userId, validatedData);
+      const obligation = await storage.createObligation(userId, req.body);
       res.status(201).json(obligation);
     } catch (error) {
       console.error("Error creating obligation:", error);
@@ -378,7 +454,7 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/obligations/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/obligations/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -393,7 +469,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/obligations/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/obligations/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -406,7 +482,7 @@ export async function registerRoutes(
   });
 
   // Conversations API
-  app.get("/api/conversations", isAuthenticated, async (req, res) => {
+  app.get("/api/conversations", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const conversations = await storage.getConversations(userId);
@@ -417,7 +493,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/conversations/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/conversations/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -433,7 +509,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/conversations", isAuthenticated, async (req, res) => {
+  app.post("/api/conversations", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const { title } = req.body;
@@ -445,7 +521,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/conversations/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/conversations/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const id = parseInt(req.params.id);
@@ -458,7 +534,7 @@ export async function registerRoutes(
   });
 
   // Messages API with streaming
-  app.post("/api/conversations/:id/messages", isAuthenticated, async (req, res) => {
+  app.post("/api/conversations/:id/messages", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req);
       const conversationId = parseInt(req.params.id);
@@ -529,6 +605,171 @@ Be concise but thorough. Use numbers and percentages when helpful.`,
       } else {
         res.status(500).json({ error: "Failed to send message" });
       }
+    }
+  });
+
+  // Subscription routes
+  app.post("/api/subscriptions/create-checkout", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const userId = getUserId(req);
+      const { priceId, tier } = req.body;
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(500).json({ error: "Stripe not configured" });
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('stripe_customer_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      let customerId = profile?.stripe_customer_id;
+
+      if (!customerId) {
+        const { data: { user } } = await supabase.auth.getUser(req.headers.authorization!.substring(7));
+        const customer = await stripe.customers.create({
+          email: user?.email,
+          metadata: { userId }
+        });
+        customerId = customer.id;
+
+        await supabase
+          .from('user_profiles')
+          .update({ stripe_customer_id: customerId })
+          .eq('id', userId);
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        line_items: [{ price: priceId, quantity: 1 }],
+        mode: 'subscription',
+        success_url: `${req.headers.origin || process.env.APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${req.headers.origin || process.env.APP_URL}/dashboard`,
+        metadata: { userId, tier }
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Checkout error:", error);
+      res.status(500).json({ error: "Failed to create checkout session" });
+    }
+  });
+
+  app.post("/api/subscriptions/manage-portal", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const userId = getUserId(req);
+
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(500).json({ error: "Stripe not configured" });
+      }
+
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('stripe_customer_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!profile?.stripe_customer_id) {
+        return res.status(400).json({ error: "No active subscription" });
+      }
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: profile.stripe_customer_id,
+        return_url: `${req.headers.origin || process.env.APP_URL}/dashboard`,
+      });
+
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Portal error:", error);
+      res.status(500).json({ error: "Failed to create portal session" });
+    }
+  });
+
+  app.post("/api/webhooks/stripe", async (req, res) => {
+    if (!process.env.STRIPE_SECRET_KEY || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return res.status(500).json({ error: "Stripe not configured" });
+    }
+
+    const sig = req.headers['stripe-signature'];
+    if (!sig) {
+      return res.status(400).json({ error: "No signature" });
+    }
+
+    try {
+      const event = stripe.webhooks.constructEvent(
+        req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
+
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object as any;
+          const userId = session.metadata.userId;
+          const tier = session.metadata.tier;
+
+          await supabase
+            .from('user_profiles')
+            .update({
+              subscription_status: 'active',
+              subscription_tier: tier,
+              stripe_subscription_id: session.subscription
+            })
+            .eq('id', userId);
+          break;
+        }
+
+        case 'customer.subscription.updated': {
+          const subscription = event.data.object as any;
+          const customer = subscription.customer;
+
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customer)
+            .maybeSingle();
+
+          if (profile) {
+            await supabase
+              .from('user_profiles')
+              .update({
+                subscription_status: subscription.status,
+                subscription_end_date: new Date(subscription.current_period_end * 1000).toISOString()
+              })
+              .eq('id', profile.id);
+          }
+          break;
+        }
+
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as any;
+          const customer = subscription.customer;
+
+          const { data: profile } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customer)
+            .maybeSingle();
+
+          if (profile) {
+            await supabase
+              .from('user_profiles')
+              .update({
+                subscription_status: 'canceled',
+                subscription_tier: 'free',
+                stripe_subscription_id: null
+              })
+              .eq('id', profile.id);
+          }
+          break;
+        }
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Webhook error:", error);
+      res.status(400).json({ error: "Webhook processing failed" });
     }
   });
 

@@ -26,7 +26,7 @@ export default function Landing() {
             <div className="text-3xl font-bold font-mono text-primary">8:18</div>
           </div>
           <Button asChild data-testid="button-login-header">
-            <a href="/api/login">
+            <a href="/auth">
               Sign In
               <ArrowRight className="ml-2 h-4 w-4" />
             </a>
@@ -49,7 +49,7 @@ export default function Landing() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
             <Button size="lg" asChild data-testid="button-get-started">
-              <a href="/api/login">
+              <a href="/auth">
                 Get Started
                 <ArrowRight className="ml-2 h-4 w-4" />
               </a>
@@ -170,13 +170,13 @@ export default function Landing() {
               </CardTitle>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button size="lg" asChild data-testid="button-get-started-final">
-                  <a href="/api/login">
+                  <a href="/auth">
                     Get Started
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </a>
                 </Button>
                 <Button size="lg" variant="outline" asChild data-testid="button-sign-in-final">
-                  <a href="/api/login">
+                  <a href="/auth">
                     Sign In
                   </a>
                 </Button>
