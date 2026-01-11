@@ -641,7 +641,7 @@ export default function BusinessFinances() {
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => setDeleteAccountConfirm(editingAccount.id)}
+                  onClick={() => editingAccount && setDeleteAccountConfirm(editingAccount.id)}
                   data-testid="button-delete-business-account"
                 >
                   <Trash2 className="h-4 w-4 mr-2" />
