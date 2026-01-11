@@ -44,14 +44,7 @@ import {
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-
-function formatCurrency(value: string | number): string {
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-}
+import { calculateFinancialTotals, formatCurrency } from "@/lib/finance-calculations";
 
 function MetricCard({
   title,
@@ -185,30 +178,8 @@ export default function Dashboard() {
   const personalAccounts = accounts?.filter((a) => a.type === "personal") || [];
   const businessAccounts = accounts?.filter((a) => a.type === "business") || [];
 
-  const personalBalance = personalAccounts.reduce((sum, a) => {
-    const balance = parseFloat(a.balance);
-    if (a.category === "credit_card") {
-      // For credit cards: available credit = credit limit - balance owed
-      const creditLimit = a.creditLimit ? parseFloat(a.creditLimit) : 0;
-      return sum + (creditLimit - balance);
-    } else if (a.category === "loan") {
-      // Loans are pure liabilities - subtract from total
-      return sum - balance;
-    }
-    return sum + balance;
-  }, 0);
-  const businessBalance = businessAccounts.reduce((sum, a) => {
-    const balance = parseFloat(a.balance);
-    if (a.category === "credit_card") {
-      // For credit cards: available credit = credit limit - balance owed
-      const creditLimit = a.creditLimit ? parseFloat(a.creditLimit) : 0;
-      return sum + (creditLimit - balance);
-    } else if (a.category === "loan") {
-      // Loans are pure liabilities - subtract from total
-      return sum - balance;
-    }
-    return sum + balance;
-  }, 0);
+  const personalFinancials = calculateFinancialTotals(personalAccounts);
+  const businessFinancials = calculateFinancialTotals(businessAccounts);
 
   const avgCreditScore = accounts?.length
     ? Math.round(
@@ -298,14 +269,14 @@ export default function Dashboard() {
         ) : (
           <>
             <MetricCard
-              title="Personal Balance"
-              value={formatCurrency(personalBalance)}
+              title="Personal Net Worth"
+              value={formatCurrency(personalFinancials.netWorth)}
               icon={Wallet}
               variant="personal"
             />
             <MetricCard
-              title="Business Balance"
-              value={formatCurrency(businessBalance)}
+              title="Business Net Worth"
+              value={formatCurrency(businessFinancials.netWorth)}
               icon={CreditCard}
               variant="business"
             />

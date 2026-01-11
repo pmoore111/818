@@ -74,14 +74,7 @@ import {
 } from "lucide-react";
 import { format, parseISO, subMonths, addMonths } from "date-fns";
 import type { Account, Transaction } from "@shared/schema";
-
-function formatCurrency(value: string | number): string {
-  const num = typeof value === "string" ? parseFloat(value) : value;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(num);
-}
+import { calculateFinancialTotals, formatCurrency } from "@/lib/finance-calculations";
 
 const accountFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -252,19 +245,7 @@ export default function BusinessFinances() {
     businessAccounts.some((a) => a.id === t.accountId)
   ) || [];
 
-  const totalBalance = businessAccounts.reduce((sum, a) => {
-    const balance = parseFloat(a.balance);
-    if (a.category === "credit_card") {
-      // For credit cards: available credit = credit limit - balance owed
-      const creditLimit = a.creditLimit ? parseFloat(a.creditLimit) : 0;
-      return sum + (creditLimit - balance);
-    } else if (a.category === "loan") {
-      // Loans are pure liabilities - subtract from total
-      return sum - balance;
-    }
-    // Checking, savings, investments are assets - add to total
-    return sum + balance;
-  }, 0);
+  const financials = calculateFinancialTotals(businessAccounts);
 
   const accountForm = useForm({
     resolver: zodResolver(accountFormSchema),
@@ -745,22 +726,42 @@ export default function BusinessFinances() {
 
       <Card className="bg-chart-4/5">
         <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
-              <span className="text-sm text-muted-foreground">Total Business Balance</span>
-              <p className="text-3xl font-bold font-mono tabular-nums">
-                {formatCurrency(totalBalance)}
+              <span className="text-sm text-muted-foreground">Total Cash</span>
+              <p className="text-xl font-bold font-mono tabular-nums text-green-600 dark:text-green-400">
+                {formatCurrency(financials.totalCash)}
               </p>
             </div>
-            <div className="flex gap-6">
-              <div>
-                <span className="text-sm text-muted-foreground">Accounts</span>
-                <p className="text-xl font-semibold">{businessAccounts.length}</p>
-              </div>
-              <div>
-                <span className="text-sm text-muted-foreground">Transactions</span>
-                <p className="text-xl font-semibold">{businessTransactions.length}</p>
-              </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Total Owed</span>
+              <p className="text-xl font-bold font-mono tabular-nums text-red-600 dark:text-red-400">
+                {formatCurrency(financials.totalOwed)}
+              </p>
+            </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Credit Limit</span>
+              <p className="text-xl font-bold font-mono tabular-nums">
+                {formatCurrency(financials.totalCreditLimit)}
+              </p>
+            </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Available Credit</span>
+              <p className={`text-xl font-bold font-mono tabular-nums ${financials.isOverLimit ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                {financials.isOverLimit 
+                  ? `Over by ${formatCurrency(financials.overLimitAmount)}`
+                  : formatCurrency(financials.totalAvailableCredit)}
+              </p>
+            </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Net Worth</span>
+              <p className={`text-xl font-bold font-mono tabular-nums ${financials.netWorth >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                {formatCurrency(financials.netWorth)}
+              </p>
+            </div>
+            <div>
+              <span className="text-sm text-muted-foreground">Accounts</span>
+              <p className="text-xl font-semibold">{businessAccounts.length}</p>
             </div>
           </div>
         </CardContent>
