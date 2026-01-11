@@ -23,8 +23,12 @@ export default function Landing() {
             Take Control of Your
             <span className="text-primary block mt-2">Personal & Business Finances</span>
           </h1>
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            A private, self-hosted financial management app that keeps your personal and business finances separate while giving you a complete picture of your financial health.
+          <blockquote className="text-lg italic text-muted-foreground mb-6 max-w-2xl mx-auto border-l-4 border-primary/40 pl-4 text-left">
+            "But remember the LORD your God, for it is he who gives you the ability to produce wealth."
+            <footer className="text-sm mt-2 not-italic text-right">— Deuteronomy 8:18</footer>
+          </blockquote>
+          <p className="text-base text-muted-foreground mb-8 max-w-2xl mx-auto">
+            A private, self-hosted financial management app built on the foundation of faithful stewardship. Keep your personal and business finances separate while gaining clarity over your financial health.
           </p>
           <Button size="lg" asChild data-testid="button-get-started">
             <a href="/api/login">
@@ -89,7 +93,7 @@ export default function Landing() {
         </section>
 
         <footer className="text-center text-muted-foreground text-sm py-8 border-t">
-          <p>8:18 Finance Tracker - Built for privacy, designed for clarity</p>
+          <p>8:18 Finance Tracker - Faithful stewardship, designed for clarity</p>
         </footer>
       </div>
     </div>
