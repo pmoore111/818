@@ -83,6 +83,14 @@ const obligationFormSchema = z.object({
   accountId: z.string().optional(),
   websiteUrl: z.string().url("Must be a valid URL").or(z.literal("")).optional(),
   notes: z.string().optional(),
+}).refine((data) => {
+  if (data.category === "credit_payment" && (!data.accountId || data.accountId === "")) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Credit card payment must be linked to a credit card account",
+  path: ["accountId"],
 });
 
 export default function Calendar() {
