@@ -608,6 +608,24 @@ export default function PersonalFinances() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={accountForm.control}
+                name="balance"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Current Balance</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        data-testid="input-edit-account-balance"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={accountForm.control}
