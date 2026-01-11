@@ -280,7 +280,6 @@ export default function PersonalFinances() {
       creditScore: "",
       interestRate: "",
       dueDay: "",
-      statementDay: "1",
     },
   });
 
@@ -294,7 +293,6 @@ export default function PersonalFinances() {
         creditScore: data.creditScore ? parseInt(data.creditScore) : null,
         interestRate: data.interestRate || null,
         dueDay: data.dueDay ? parseInt(data.dueDay) : null,
-        statementDay: data.statementDay ? parseInt(data.statementDay) : 1,
       });
     },
     onSuccess: () => {
@@ -316,7 +314,6 @@ export default function PersonalFinances() {
         creditScore: data.creditScore ? parseInt(data.creditScore) : null,
         interestRate: data.interestRate || null,
         dueDay: data.dueDay ? parseInt(data.dueDay) : null,
-        statementDay: data.statementDay ? parseInt(data.statementDay) : 1,
       });
     },
     onSuccess: () => {
@@ -372,7 +369,6 @@ export default function PersonalFinances() {
       creditScore: account.creditScore?.toString() || "",
       interestRate: account.interestRate || "",
       dueDay: account.dueDay?.toString() || "",
-      statementDay: account.statementDay?.toString() || "1",
     });
   };
 
@@ -589,7 +585,7 @@ export default function PersonalFinances() {
           <DialogHeader>
             <DialogTitle>Edit Account Settings</DialogTitle>
             <DialogDescription>
-              Update your account settings including statement day
+              Update your account settings
             </DialogDescription>
           </DialogHeader>
           <Form {...accountForm}>
@@ -615,25 +611,6 @@ export default function PersonalFinances() {
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={accountForm.control}
-                  name="statementDay"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Statement Day</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="31"
-                          {...field}
-                          data-testid="input-edit-statement-day"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={accountForm.control}
                   name="dueDay"
                   render={({ field }) => (
                     <FormItem>
@@ -645,8 +622,6 @@ export default function PersonalFinances() {
                     </FormItem>
                   )}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={accountForm.control}
                   name="creditScore"
@@ -660,6 +635,8 @@ export default function PersonalFinances() {
                     </FormItem>
                   )}
                 />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={accountForm.control}
                   name="creditLimit"
