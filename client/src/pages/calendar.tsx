@@ -99,7 +99,14 @@ export default function Calendar() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingObligation, setEditingObligation] = useState<Obligation | null>(null);
   const [filter, setFilter] = useState<"all" | "personal" | "business">("all");
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [paymentName, setPaymentName] = useState<string>("");
   const { toast } = useToast();
+
+  const openPaymentPortal = (url: string, name: string) => {
+    setPaymentUrl(url);
+    setPaymentName(name);
+  };
 
   const { data: obligations, isLoading: obligationsLoading } = useQuery<Obligation[]>({
     queryKey: ["/api/obligations"],
@@ -752,15 +759,10 @@ export default function Calendar() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
-                                asChild
+                                onClick={() => openPaymentPortal(obligation.websiteUrl!, obligation.name)}
+                                data-testid={`button-pay-${obligation.id}`}
                               >
-                                <a
-                                  href={obligation.websiteUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
+                                <ExternalLink className="h-3 w-3" />
                               </Button>
                             )}
                             <Button
@@ -892,6 +894,41 @@ export default function Calendar() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!paymentUrl} onOpenChange={(open) => {
+        if (!open) {
+          setPaymentUrl(null);
+          setPaymentName("");
+        }
+      }}>
+        <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 gap-0">
+          <DialogHeader className="p-4 border-b">
+            <DialogTitle className="flex items-center justify-between">
+              <span>{paymentName}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (paymentUrl) {
+                    window.open(paymentUrl, "_blank");
+                  }
+                }}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open in New Tab
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+          {paymentUrl && (
+            <iframe
+              src={paymentUrl}
+              className="w-full flex-1 border-0"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+              title={`Pay ${paymentName}`}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
