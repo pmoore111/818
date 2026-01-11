@@ -80,6 +80,7 @@ export const obligations = pgTable("obligations", {
   name: text("name").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   type: text("type").notNull(), // 'personal' or 'business'
+  category: text("category").notNull().default("subscription"), // 'credit_payment', 'subscription', 'bill'
   dueDate: date("due_date").notNull(),
   isRecurring: boolean("is_recurring").default(false),
   frequency: text("frequency"), // 'monthly', 'weekly', 'yearly', 'one-time'

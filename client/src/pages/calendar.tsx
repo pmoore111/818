@@ -76,6 +76,7 @@ const obligationFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   amount: z.string().min(1, "Amount is required"),
   type: z.string().min(1, "Type is required"),
+  category: z.string().min(1, "Category is required"),
   dueDate: z.string().min(1, "Due date is required"),
   isRecurring: z.boolean().default(false),
   frequency: z.string().optional(),
@@ -106,6 +107,7 @@ export default function Calendar() {
       name: "",
       amount: "",
       type: "personal",
+      category: "subscription",
       dueDate: format(new Date(), "yyyy-MM-dd"),
       isRecurring: false,
       frequency: "",
@@ -115,24 +117,28 @@ export default function Calendar() {
     },
   });
 
+  const watchCategory = form.watch("category");
+  const watchType = form.watch("type");
+  const watchAccountId = form.watch("accountId");
+
+  const selectedAccount = accounts?.find(a => a.id.toString() === watchAccountId);
+  const creditCardAccounts = accounts?.filter(a => 
+    a.category === "credit_card" && a.type === watchType
+  ) || [];
+
   const createMutation = useMutation({
     mutationFn: async (data: z.infer<typeof obligationFormSchema>) => {
-      if (editingObligation) {
-        return apiRequest("PATCH", `/api/obligations/${editingObligation.id}`, {
-          ...data,
-          accountId: data.accountId ? parseInt(data.accountId) : null,
-          frequency: data.frequency || null,
-          websiteUrl: data.websiteUrl || null,
-          notes: data.notes || null,
-        });
-      }
-      return apiRequest("POST", "/api/obligations", {
+      const payload = {
         ...data,
         accountId: data.accountId ? parseInt(data.accountId) : null,
         frequency: data.frequency || null,
         websiteUrl: data.websiteUrl || null,
         notes: data.notes || null,
-      });
+      };
+      if (editingObligation) {
+        return apiRequest("PATCH", `/api/obligations/${editingObligation.id}`, payload);
+      }
+      return apiRequest("POST", "/api/obligations", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
@@ -165,6 +171,7 @@ export default function Calendar() {
       name: obligation.name,
       amount: obligation.amount.toString(),
       type: obligation.type,
+      category: obligation.category || "subscription",
       dueDate: obligation.dueDate,
       isRecurring: obligation.isRecurring || false,
       frequency: obligation.frequency || "",
@@ -286,10 +293,128 @@ export default function Calendar() {
                     <div className="grid grid-cols-2 gap-4">
                       <FormField
                         control={form.control}
+                        name="type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Type</FormLabel>
+                            <Select onValueChange={(v) => {
+                              field.onChange(v);
+                              form.setValue("accountId", "");
+                            }} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-obligation-type">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="personal">Personal</SelectItem>
+                                <SelectItem value="business">Business</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Category</FormLabel>
+                            <Select onValueChange={(v) => {
+                              field.onChange(v);
+                              if (v !== "credit_payment") {
+                                form.setValue("accountId", "");
+                              }
+                            }} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-obligation-category">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="credit_payment">Credit Card Payment</SelectItem>
+                                <SelectItem value="subscription">Subscription</SelectItem>
+                                <SelectItem value="bill">Bill</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    {watchCategory === "credit_payment" && (
+                      <>
+                        <FormField
+                          control={form.control}
+                          name="accountId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Link to Credit Card</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-obligation-creditcard">
+                                    <SelectValue placeholder="Select credit card" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {creditCardAccounts.length === 0 ? (
+                                    <div className="p-2 text-sm text-muted-foreground">
+                                      No {watchType} credit cards found
+                                    </div>
+                                  ) : (
+                                    creditCardAccounts.map((account) => (
+                                      <SelectItem
+                                        key={account.id}
+                                        value={account.id.toString()}
+                                      >
+                                        {account.name}
+                                      </SelectItem>
+                                    ))
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        {selectedAccount && (
+                          <Card className="bg-muted/50">
+                            <CardContent className="p-4 space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Credit Limit</span>
+                                <span className="font-mono tabular-nums">
+                                  {selectedAccount.creditLimit ? formatCurrency(selectedAccount.creditLimit) : "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Current Balance</span>
+                                <span className="font-mono tabular-nums">
+                                  {formatCurrency(selectedAccount.balance)}
+                                </span>
+                              </div>
+                              {selectedAccount.creditLimit && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-muted-foreground">Available Credit</span>
+                                  <span className="font-mono tabular-nums">
+                                    {formatCurrency(parseFloat(selectedAccount.creditLimit) - parseFloat(selectedAccount.balance))}
+                                  </span>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        )}
+                      </>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
                         name="amount"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Amount</FormLabel>
+                            <FormLabel>{watchCategory === "credit_payment" ? "Payment Amount" : "Amount"}</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -305,29 +430,6 @@ export default function Calendar() {
                       />
                       <FormField
                         control={form.control}
-                        name="type"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Type</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-obligation-type">
-                                  <SelectValue />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="personal">Personal</SelectItem>
-                                <SelectItem value="business">Business</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
                         name="dueDate"
                         render={({ field }) => (
                           <FormItem>
@@ -339,33 +441,6 @@ export default function Calendar() {
                                 data-testid="input-obligation-date"
                               />
                             </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="accountId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Account (optional)</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-obligation-account">
-                                  <SelectValue placeholder="Select account" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {accounts?.map((account) => (
-                                  <SelectItem
-                                    key={account.id}
-                                    value={account.id.toString()}
-                                  >
-                                    {account.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
                             <FormMessage />
                           </FormItem>
                         )}
