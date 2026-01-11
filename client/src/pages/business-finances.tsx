@@ -729,33 +729,33 @@ export default function BusinessFinances() {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div>
               <span className="text-sm text-muted-foreground">Total Cash</span>
-              <p className="text-xl font-bold font-mono tabular-nums text-green-600 dark:text-green-400">
+              <p className="text-lg font-bold font-mono tabular-nums text-green-600 dark:text-green-400">
                 {formatCurrency(financials.totalCash)}
               </p>
             </div>
             <div>
               <span className="text-sm text-muted-foreground">Total Owed</span>
-              <p className="text-xl font-bold font-mono tabular-nums text-red-600 dark:text-red-400">
+              <p className="text-lg font-bold font-mono tabular-nums text-red-600 dark:text-red-400">
                 {formatCurrency(financials.totalOwed)}
               </p>
             </div>
             <div>
               <span className="text-sm text-muted-foreground">Credit Limit</span>
-              <p className="text-xl font-bold font-mono tabular-nums">
+              <p className="text-lg font-bold font-mono tabular-nums">
                 {formatCurrency(financials.totalCreditLimit)}
               </p>
             </div>
             <div>
               <span className="text-sm text-muted-foreground">Available Credit</span>
-              <p className={`text-xl font-bold font-mono tabular-nums ${financials.isOverLimit ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+              <p className={`text-lg font-bold font-mono tabular-nums ${financials.isOverLimit ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
                 {financials.isOverLimit 
-                  ? `Over by ${formatCurrency(financials.overLimitAmount)}`
+                  ? `-${formatCurrency(financials.overLimitAmount)}`
                   : formatCurrency(financials.totalAvailableCredit)}
               </p>
             </div>
             <div>
               <span className="text-sm text-muted-foreground">Net Worth</span>
-              <p className={`text-xl font-bold font-mono tabular-nums ${financials.netWorth >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              <p className={`text-lg font-bold font-mono tabular-nums ${financials.netWorth >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                 {formatCurrency(financials.netWorth)}
               </p>
             </div>
