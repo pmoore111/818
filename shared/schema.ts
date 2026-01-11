@@ -3,24 +3,16 @@ import { pgTable, text, varchar, serial, integer, timestamp, numeric, date, bool
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-});
+// Re-export auth models (users and sessions tables)
+export * from "./models/auth";
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
-});
-
-export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+// Import users for foreign key references
+import { users } from "./models/auth";
 
 // Account types: personal or business
 export const accounts = pgTable("accounts", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   type: text("type").notNull(), // 'personal' or 'business'
   category: text("category").notNull(), // 'checking', 'savings', 'credit_card', 'loan', 'investment'
@@ -40,6 +32,7 @@ export const accountsRelations = relations(accounts, ({ many }) => ({
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
+  userId: true,
   createdAt: true,
 });
 
@@ -49,6 +42,7 @@ export type InsertAccount = z.infer<typeof insertAccountSchema>;
 // Transactions
 export const transactions = pgTable("transactions", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   description: text("description").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
@@ -67,6 +61,7 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 
 export const insertTransactionSchema = createInsertSchema(transactions).omit({
   id: true,
+  userId: true,
   createdAt: true,
 });
 
@@ -76,6 +71,7 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 // Obligations (recurring payments, due dates)
 export const obligations = pgTable("obligations", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   accountId: integer("account_id").references(() => accounts.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
@@ -99,6 +95,7 @@ export const obligationsRelations = relations(obligations, ({ one }) => ({
 
 export const insertObligationSchema = createInsertSchema(obligations).omit({
   id: true,
+  userId: true,
   createdAt: true,
 });
 
@@ -108,6 +105,7 @@ export type InsertObligation = z.infer<typeof insertObligationSchema>;
 // AI Chat conversations
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -118,6 +116,7 @@ export const conversationsRelations = relations(conversations, ({ many }) => ({
 
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
+  userId: true,
   createdAt: true,
 });
 
