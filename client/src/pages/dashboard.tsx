@@ -9,8 +9,25 @@ import {
   Wallet,
   CalendarClock,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  User,
+  Briefcase,
 } from "lucide-react";
-import { format, parseISO, isAfter, isBefore, addDays } from "date-fns";
+import { 
+  format, 
+  parseISO, 
+  isAfter, 
+  isBefore, 
+  addDays, 
+  startOfMonth, 
+  endOfMonth, 
+  eachDayOfInterval, 
+  isSameDay, 
+  isSameMonth, 
+  addMonths, 
+  subMonths 
+} from "date-fns";
 import type { Account, Transaction, Obligation } from "@shared/schema";
 import {
   AreaChart,
@@ -24,6 +41,9 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { useState } from "react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 
 function formatCurrency(value: string | number): string {
   const num = typeof value === "string" ? parseFloat(value) : value;
@@ -148,6 +168,8 @@ function UpcomingObligationRow({ obligation }: { obligation: Obligation }) {
 }
 
 export default function Dashboard() {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  
   const { data: accounts, isLoading: accountsLoading } = useQuery<Account[]>({
     queryKey: ["/api/accounts"],
   });
@@ -227,6 +249,19 @@ export default function Dashboard() {
 
   const chartData = Object.values(monthlyData || {}).slice(-6);
 
+  // Calendar Logic
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const startDayOffset = monthStart.getDay();
+  const paddedDays = [...Array(startDayOffset).fill(null), ...monthDays];
+
+  const getObligationsForDate = (date: Date) => {
+    return obligations?.filter((o) =>
+      isSameDay(parseISO(o.dueDate), date)
+    ) || [];
+  };
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex flex-col gap-1">
@@ -273,52 +308,101 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Calendar View on Front Page */}
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base font-semibold">Income vs Expenses</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-semibold">Financial Calendar</CardTitle>
+              <p className="text-xs text-muted-foreground">Upcoming payments & subscriptions</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-sm font-medium mr-2">{format(currentMonth, "MMMM yyyy")}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            {transactionsLoading ? (
-              <Skeleton className="h-[280px]" />
-            ) : chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis className="text-xs" tickFormatter={(v) => `$${v / 1000}k`} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "0.5rem",
-                    }}
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="income"
-                    stackId="1"
-                    stroke="hsl(var(--chart-1))"
-                    fill="hsl(var(--chart-1))"
-                    fillOpacity={0.3}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="expenses"
-                    stackId="2"
-                    stroke="hsl(var(--chart-5))"
-                    fill="hsl(var(--chart-5))"
-                    fillOpacity={0.3}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+            {obligationsLoading ? (
+              <Skeleton className="h-[300px]" />
             ) : (
-              <div className="flex flex-col items-center justify-center h-[280px] text-muted-foreground">
-                <AlertCircle className="h-10 w-10 mb-2" />
-                <p>No transaction data yet</p>
-                <p className="text-sm">Add transactions to see your trends</p>
+              <div className="grid grid-cols-7 gap-px bg-border rounded-lg overflow-hidden border">
+                {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
+                  <div key={i} className="bg-muted/50 text-center py-1 text-[10px] font-bold text-muted-foreground uppercase">
+                    {day}
+                  </div>
+                ))}
+                {paddedDays.map((day, i) => {
+                  if (!day) return <div key={`empty-${i}`} className="bg-background min-h-[60px]" />;
+                  const dayObligations = getObligationsForDate(day);
+                  const isToday = isSameDay(day, new Date());
+                  const isCurrentMonth = isSameMonth(day, currentMonth);
+
+                  return (
+                    <div
+                      key={day.toISOString()}
+                      className={`bg-background p-1 min-h-[60px] border-t border-l first:border-l-0 ${
+                        !isCurrentMonth ? "opacity-30" : ""
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className={`text-[10px] font-medium ${isToday ? "bg-primary text-primary-foreground w-4 h-4 rounded-full flex items-center justify-center" : ""}`}>
+                          {format(day, "d")}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        {dayObligations.slice(0, 2).map((o) => (
+                          <div
+                            key={o.id}
+                            className={`text-[8px] leading-tight px-1 py-0.5 rounded truncate ${
+                              o.isPaid 
+                                ? "bg-muted text-muted-foreground" 
+                                : o.type === "personal" 
+                                ? "bg-chart-2/20 text-chart-2 font-medium" 
+                                : "bg-chart-4/20 text-chart-4 font-medium"
+                            }`}
+                            title={`${o.name}: ${formatCurrency(o.amount)}`}
+                          >
+                            {o.name}
+                          </div>
+                        ))}
+                        {dayObligations.length > 2 && (
+                          <span className="text-[8px] text-muted-foreground pl-1">
+                            +{dayObligations.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+            <div className="flex gap-4 mt-4 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-chart-2" />
+                <span>Personal</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 rounded-full bg-chart-4" />
+                <span>Business</span>
+              </div>
+              <div className="flex items-center gap-1 ml-auto">
+                <Link href="/calendar" className="text-primary hover:underline font-medium">Full Calendar &rarr;</Link>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
