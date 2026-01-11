@@ -45,6 +45,8 @@ import {
   Check,
   Clock,
   AlertCircle,
+  Settings,
+  ExternalLink,
 } from "lucide-react";
 import {
   format,
@@ -630,11 +632,11 @@ export default function Calendar() {
                       data-testid={`obligation-detail-${obligation.id}`}
                     >
                       <Checkbox
-                        checked={obligation.isPaid}
+                        checked={obligation.isPaid || false}
                         onCheckedChange={(checked) =>
                           togglePaidMutation.mutate({
                             id: obligation.id,
-                            isPaid: checked as boolean,
+                            isPaid: checked === true,
                           })
                         }
                         data-testid={`checkbox-paid-${obligation.id}`}
@@ -674,7 +676,7 @@ export default function Calendar() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
-                                  <Plus className="h-3 w-3" />
+                                  <ExternalLink className="h-3 w-3" />
                                 </a>
                               </Button>
                             )}
