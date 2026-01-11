@@ -5,9 +5,7 @@ import {
   Briefcase,
   CalendarDays,
   MessageSquare,
-  CreditCard,
-  TrendingUp,
-  Wallet,
+  LogOut,
 } from "lucide-react";
 import {
   Sidebar,
@@ -21,6 +19,9 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 
 const mainNavItems = [
   {
@@ -61,6 +62,7 @@ const toolsItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { user, logout, isLoggingOut } = useAuth();
 
   return (
     <Sidebar>
@@ -173,13 +175,28 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent p-3">
-          <TrendingUp className="h-4 w-4 text-primary" />
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-sidebar-foreground">Credit Health</span>
-            <span className="text-xs text-muted-foreground">Track & Improve</span>
+        {user && (
+          <div className="flex items-center gap-3 rounded-lg bg-sidebar-accent p-3">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user.profileImageUrl || undefined} alt={user.firstName || "User"} />
+              <AvatarFallback>{user.firstName?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col flex-1 min-w-0">
+              <span className="text-sm font-medium text-sidebar-foreground truncate">
+                {user.firstName || user.email || "User"}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => logout()}
+              disabled={isLoggingOut}
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
