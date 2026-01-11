@@ -901,7 +901,7 @@ export default function Calendar() {
           setPaymentName("");
         }
       }}>
-        <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 gap-0">
+        <DialogContent className="max-w-[98vw] w-[98vw] h-[95vh] max-h-[95vh] p-0 gap-0 flex flex-col">
           <DialogHeader className="p-4 border-b">
             <DialogTitle className="flex items-center justify-between">
               <span>{paymentName}</span>
@@ -922,7 +922,8 @@ export default function Calendar() {
           {paymentUrl && (
             <iframe
               src={paymentUrl}
-              className="w-full flex-1 border-0"
+              className="w-full flex-1 border-0 min-h-0"
+              style={{ height: "calc(95vh - 80px)" }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
               title={`Pay ${paymentName}`}
             />
