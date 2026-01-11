@@ -1,12 +1,19 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import multer from "multer";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+
+// Helper to get userId from authenticated request
+function getUserId(req: Request): string {
+  return (req.user as any)?.claims?.sub;
+}
 
 async function parsePDF(buffer: Buffer): Promise<{ text: string }> {
-  const pdfParse = (await import("pdf-parse")).default;
+  const pdfParseModule = await import("pdf-parse");
+  const pdfParse = pdfParseModule.default || pdfParseModule;
   return pdfParse(buffer);
 }
 
@@ -123,10 +130,15 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Setup authentication (MUST be before other routes)
+  await setupAuth(app);
+  registerAuthRoutes(app);
+
   // Accounts API
-  app.get("/api/accounts", async (req, res) => {
+  app.get("/api/accounts", isAuthenticated, async (req, res) => {
     try {
-      const accounts = await storage.getAccounts();
+      const userId = getUserId(req);
+      const accounts = await storage.getAccounts(userId);
       res.json(accounts);
     } catch (error) {
       console.error("Error fetching accounts:", error);
@@ -134,10 +146,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/accounts/:id", async (req, res) => {
+  app.get("/api/accounts/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const account = await storage.getAccount(id);
+      const account = await storage.getAccount(userId, id);
       if (!account) {
         return res.status(404).json({ error: "Account not found" });
       }
@@ -148,10 +161,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/accounts", async (req, res) => {
+  app.post("/api/accounts", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const validatedData = insertAccountSchema.parse(req.body);
-      const account = await storage.createAccount(validatedData);
+      const account = await storage.createAccount(userId, validatedData);
       res.status(201).json(account);
     } catch (error) {
       console.error("Error creating account:", error);
@@ -159,10 +173,11 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/accounts/:id", async (req, res) => {
+  app.patch("/api/accounts/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const account = await storage.updateAccount(id, req.body);
+      const account = await storage.updateAccount(userId, id, req.body);
       if (!account) {
         return res.status(404).json({ error: "Account not found" });
       }
@@ -173,10 +188,11 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/accounts/:id", async (req, res) => {
+  app.delete("/api/accounts/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      await storage.deleteAccount(id);
+      await storage.deleteAccount(userId, id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting account:", error);
@@ -185,9 +201,10 @@ export async function registerRoutes(
   });
 
   // Transactions API
-  app.get("/api/transactions", async (req, res) => {
+  app.get("/api/transactions", isAuthenticated, async (req, res) => {
     try {
-      const transactions = await storage.getTransactions();
+      const userId = getUserId(req);
+      const transactions = await storage.getTransactions(userId);
       res.json(transactions);
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -195,10 +212,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/transactions/:id", async (req, res) => {
+  app.get("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const transaction = await storage.getTransaction(id);
+      const transaction = await storage.getTransaction(userId, id);
       if (!transaction) {
         return res.status(404).json({ error: "Transaction not found" });
       }
@@ -209,10 +227,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/transactions", async (req, res) => {
+  app.post("/api/transactions", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const validatedData = insertTransactionSchema.parse(req.body);
-      const transaction = await storage.createTransaction(validatedData);
+      const transaction = await storage.createTransaction(userId, validatedData);
       res.status(201).json(transaction);
     } catch (error) {
       console.error("Error creating transaction:", error);
@@ -222,8 +241,9 @@ export async function registerRoutes(
 
   // Delete transactions by date range (for statement period deletion)
   // This route MUST come before /api/transactions/:id to avoid matching "by-date-range" as an ID
-  app.delete("/api/transactions/by-date-range", async (req, res) => {
+  app.delete("/api/transactions/by-date-range", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { accountId, startDate, endDate } = req.body;
       
       if (!accountId || !startDate || !endDate) {
@@ -231,6 +251,7 @@ export async function registerRoutes(
       }
 
       const deletedCount = await storage.deleteTransactionsByDateRange(
+        userId,
         parseInt(accountId),
         startDate,
         endDate
@@ -243,10 +264,11 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/transactions/:id", async (req, res) => {
+  app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      await storage.deleteTransaction(id);
+      await storage.deleteTransaction(userId, id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting transaction:", error);
@@ -255,7 +277,7 @@ export async function registerRoutes(
   });
 
   // Parse PDF statement
-  app.post("/api/parse-pdf", upload.single('file'), async (req, res) => {
+  app.post("/api/parse-pdf", isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -284,8 +306,9 @@ export async function registerRoutes(
   });
 
   // Bulk import transactions (for CSV import)
-  app.post("/api/transactions/bulk", async (req, res) => {
+  app.post("/api/transactions/bulk", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { transactions } = req.body;
       
       if (!Array.isArray(transactions) || transactions.length === 0) {
@@ -298,7 +321,7 @@ export async function registerRoutes(
       for (let i = 0; i < transactions.length; i++) {
         try {
           const validatedData = insertTransactionSchema.parse(transactions[i]);
-          const transaction = await storage.createTransaction(validatedData);
+          const transaction = await storage.createTransaction(userId, validatedData);
           imported.push(transaction);
         } catch (err) {
           errors.push({ index: i, error: err instanceof Error ? err.message : "Invalid data" });
@@ -317,9 +340,10 @@ export async function registerRoutes(
   });
 
   // Obligations API
-  app.get("/api/obligations", async (req, res) => {
+  app.get("/api/obligations", isAuthenticated, async (req, res) => {
     try {
-      const obligations = await storage.getObligations();
+      const userId = getUserId(req);
+      const obligations = await storage.getObligations(userId);
       res.json(obligations);
     } catch (error) {
       console.error("Error fetching obligations:", error);
@@ -327,10 +351,11 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/obligations/:id", async (req, res) => {
+  app.get("/api/obligations/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const obligation = await storage.getObligation(id);
+      const obligation = await storage.getObligation(userId, id);
       if (!obligation) {
         return res.status(404).json({ error: "Obligation not found" });
       }
@@ -341,10 +366,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/obligations", async (req, res) => {
+  app.post("/api/obligations", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const validatedData = insertObligationSchema.parse(req.body);
-      const obligation = await storage.createObligation(validatedData);
+      const obligation = await storage.createObligation(userId, validatedData);
       res.status(201).json(obligation);
     } catch (error) {
       console.error("Error creating obligation:", error);
@@ -352,10 +378,11 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/obligations/:id", async (req, res) => {
+  app.patch("/api/obligations/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const obligation = await storage.updateObligation(id, req.body);
+      const obligation = await storage.updateObligation(userId, id, req.body);
       if (!obligation) {
         return res.status(404).json({ error: "Obligation not found" });
       }
@@ -366,10 +393,11 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/obligations/:id", async (req, res) => {
+  app.delete("/api/obligations/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      await storage.deleteObligation(id);
+      await storage.deleteObligation(userId, id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting obligation:", error);
@@ -378,9 +406,10 @@ export async function registerRoutes(
   });
 
   // Conversations API
-  app.get("/api/conversations", async (req, res) => {
+  app.get("/api/conversations", isAuthenticated, async (req, res) => {
     try {
-      const conversations = await storage.getConversations();
+      const userId = getUserId(req);
+      const conversations = await storage.getConversations(userId);
       res.json(conversations);
     } catch (error) {
       console.error("Error fetching conversations:", error);
@@ -388,14 +417,15 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/conversations/:id", async (req, res) => {
+  app.get("/api/conversations/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      const conversation = await storage.getConversation(id);
+      const conversation = await storage.getConversation(userId, id);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
       }
-      const messages = await storage.getMessagesByConversation(id);
+      const messages = await storage.getMessagesByConversation(userId, id);
       res.json({ ...conversation, messages });
     } catch (error) {
       console.error("Error fetching conversation:", error);
@@ -403,10 +433,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/conversations", async (req, res) => {
+  app.post("/api/conversations", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const { title } = req.body;
-      const conversation = await storage.createConversation(title || "New Chat");
+      const conversation = await storage.createConversation(userId, title || "New Chat");
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -414,10 +445,11 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/conversations/:id", async (req, res) => {
+  app.delete("/api/conversations/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const id = parseInt(req.params.id);
-      await storage.deleteConversation(id);
+      await storage.deleteConversation(userId, id);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting conversation:", error);
@@ -426,16 +458,17 @@ export async function registerRoutes(
   });
 
   // Messages API with streaming
-  app.post("/api/conversations/:id/messages", async (req, res) => {
+  app.post("/api/conversations/:id/messages", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const conversationId = parseInt(req.params.id);
       const { content } = req.body;
 
       // Save user message
-      await storage.createMessage(conversationId, "user", content);
+      await storage.createMessage(userId, conversationId, "user", content);
 
       // Get conversation history for context
-      const messages = await storage.getMessagesByConversation(conversationId);
+      const messages = await storage.getMessagesByConversation(userId, conversationId);
       
       // Build chat messages for OpenAI
       const systemMessage = {
@@ -484,7 +517,7 @@ Be concise but thorough. Use numbers and percentages when helpful.`,
       }
 
       // Save assistant message
-      await storage.createMessage(conversationId, "assistant", fullResponse);
+      await storage.createMessage(userId, conversationId, "assistant", fullResponse);
 
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
