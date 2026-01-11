@@ -185,14 +185,22 @@ export default function Dashboard() {
   const personalAccounts = accounts?.filter((a) => a.type === "personal") || [];
   const businessAccounts = accounts?.filter((a) => a.type === "business") || [];
 
-  const personalBalance = personalAccounts.reduce(
-    (sum, a) => sum + parseFloat(a.balance),
-    0
-  );
-  const businessBalance = businessAccounts.reduce(
-    (sum, a) => sum + parseFloat(a.balance),
-    0
-  );
+  const personalBalance = personalAccounts.reduce((sum, a) => {
+    const balance = parseFloat(a.balance);
+    // Credit cards and loans are liabilities - subtract from total
+    if (a.category === "credit_card" || a.category === "loan") {
+      return sum - balance;
+    }
+    return sum + balance;
+  }, 0);
+  const businessBalance = businessAccounts.reduce((sum, a) => {
+    const balance = parseFloat(a.balance);
+    // Credit cards and loans are liabilities - subtract from total
+    if (a.category === "credit_card" || a.category === "loan") {
+      return sum - balance;
+    }
+    return sum + balance;
+  }, 0);
 
   const avgCreditScore = accounts?.length
     ? Math.round(
