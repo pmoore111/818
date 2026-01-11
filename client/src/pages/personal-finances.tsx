@@ -265,10 +265,15 @@ export default function PersonalFinances() {
     personalAccounts.some((a) => a.id === t.accountId)
   ) || [];
 
-  const totalBalance = personalAccounts.reduce(
-    (sum, a) => sum + parseFloat(a.balance),
-    0
-  );
+  const totalBalance = personalAccounts.reduce((sum, a) => {
+    const balance = parseFloat(a.balance);
+    // Credit cards and loans are liabilities - subtract from total
+    if (a.category === "credit_card" || a.category === "loan") {
+      return sum - balance;
+    }
+    // Checking, savings, investments are assets - add to total
+    return sum + balance;
+  }, 0);
 
   const accountForm = useForm({
     resolver: zodResolver(accountFormSchema),
