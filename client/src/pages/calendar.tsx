@@ -272,7 +272,7 @@ export default function Calendar() {
                   Add Obligation
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingObligation ? "Edit Obligation" : "Add Obligation"}</DialogTitle>
                 </DialogHeader>
