@@ -4,9 +4,11 @@ import { storage } from "./storage";
 import { insertAccountSchema, insertTransactionSchema, insertObligationSchema } from "@shared/schema";
 import OpenAI from "openai";
 import multer from "multer";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+
+async function parsePDF(buffer: Buffer): Promise<{ text: string }> {
+  const pdfParse = (await import("pdf-parse")).default;
+  return pdfParse(buffer);
+}
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -259,7 +261,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const pdfData = await pdfParse(req.file.buffer);
+      const pdfData = await parsePDF(req.file.buffer);
       const text = pdfData.text;
       
       // Try Lili format first
