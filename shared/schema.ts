@@ -84,6 +84,7 @@ export const obligations = pgTable("obligations", {
   isRecurring: boolean("is_recurring").default(false),
   frequency: text("frequency"), // 'monthly', 'weekly', 'yearly', 'one-time'
   isPaid: boolean("is_paid").default(false),
+  websiteUrl: text("website_url"),
   notes: text("notes"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });

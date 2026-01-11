@@ -78,6 +78,7 @@ const obligationFormSchema = z.object({
   isRecurring: z.boolean().default(false),
   frequency: z.string().optional(),
   accountId: z.string().optional(),
+  websiteUrl: z.string().url("Must be a valid URL").or(z.literal("")).optional(),
   notes: z.string().optional(),
 });
 
@@ -85,6 +86,7 @@ export default function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingObligation, setEditingObligation] = useState<Obligation | null>(null);
   const [filter, setFilter] = useState<"all" | "personal" | "business">("all");
   const { toast } = useToast();
 
@@ -106,29 +108,70 @@ export default function Calendar() {
       isRecurring: false,
       frequency: "",
       accountId: "",
+      websiteUrl: "",
       notes: "",
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: z.infer<typeof obligationFormSchema>) => {
+      if (editingObligation) {
+        return apiRequest("PATCH", `/api/obligations/${editingObligation.id}`, {
+          ...data,
+          accountId: data.accountId ? parseInt(data.accountId) : null,
+          frequency: data.frequency || null,
+          websiteUrl: data.websiteUrl || null,
+          notes: data.notes || null,
+        });
+      }
       return apiRequest("POST", "/api/obligations", {
         ...data,
         accountId: data.accountId ? parseInt(data.accountId) : null,
         frequency: data.frequency || null,
+        websiteUrl: data.websiteUrl || null,
         notes: data.notes || null,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
       setDialogOpen(false);
+      setEditingObligation(null);
       form.reset();
-      toast({ title: "Obligation created successfully" });
+      toast({ title: editingObligation ? "Obligation updated" : "Obligation created" });
     },
     onError: () => {
-      toast({ title: "Failed to create obligation", variant: "destructive" });
+      toast({ title: editingObligation ? "Failed to update obligation" : "Failed to create obligation", variant: "destructive" });
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/obligations/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/obligations"] });
+      toast({ title: "Obligation deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete obligation", variant: "destructive" });
+    },
+  });
+
+  const handleEdit = (obligation: Obligation) => {
+    setEditingObligation(obligation);
+    form.reset({
+      name: obligation.name,
+      amount: obligation.amount.toString(),
+      type: obligation.type,
+      dueDate: obligation.dueDate,
+      isRecurring: obligation.isRecurring || false,
+      frequency: obligation.frequency || "",
+      accountId: obligation.accountId?.toString() || "",
+      websiteUrl: obligation.websiteUrl || "",
+      notes: obligation.notes || "",
+    });
+    setDialogOpen(true);
+  };
 
   const togglePaidMutation = useMutation({
     mutationFn: async ({ id, isPaid }: { id: number; isPaid: boolean }) => {
@@ -199,7 +242,13 @@ export default function Calendar() {
                 <SelectItem value="business">Business</SelectItem>
               </SelectContent>
             </Select>
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) {
+                setEditingObligation(null);
+                form.reset();
+              }
+            }}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-obligation">
                   <Plus className="h-4 w-4 mr-2" />
@@ -208,7 +257,7 @@ export default function Calendar() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add Obligation</DialogTitle>
+                  <DialogTitle>{editingObligation ? "Edit Obligation" : "Add Obligation"}</DialogTitle>
                 </DialogHeader>
                 <Form {...form}>
                   <form
@@ -322,6 +371,23 @@ export default function Calendar() {
                     </div>
                     <FormField
                       control={form.control}
+                      name="websiteUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Website Link (optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="https://..."
+                              {...field}
+                              data-testid="input-obligation-website"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
                       name="isRecurring"
                       render={({ field }) => (
                         <FormItem className="flex items-center justify-between rounded-lg border p-3">
@@ -382,14 +448,31 @@ export default function Calendar() {
                         </FormItem>
                       )}
                     />
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={createMutation.isPending}
-                      data-testid="button-submit-obligation"
-                    >
-                      {createMutation.isPending ? "Creating..." : "Create Obligation"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="submit"
+                        className="flex-1"
+                        disabled={createMutation.isPending}
+                        data-testid="button-submit-obligation"
+                      >
+                        {createMutation.isPending ? "Saving..." : editingObligation ? "Update Obligation" : "Create Obligation"}
+                      </Button>
+                      {editingObligation && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this obligation?")) {
+                              deleteMutation.mutate(editingObligation.id);
+                              setDialogOpen(false);
+                            }
+                          }}
+                          disabled={deleteMutation.isPending}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </div>
                   </form>
                 </Form>
               </DialogContent>
@@ -557,25 +640,53 @@ export default function Calendar() {
                         data-testid={`checkbox-paid-${obligation.id}`}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`font-medium text-sm ${
-                              obligation.isPaid ? "line-through text-muted-foreground" : ""
-                            }`}
-                          >
-                            {obligation.name}
-                          </span>
-                          <Badge
-                            variant={obligation.type === "personal" ? "secondary" : "outline"}
-                            className="text-xs"
-                          >
-                            {obligation.type === "personal" ? (
-                              <User className="h-3 w-3 mr-1" />
-                            ) : (
-                              <Briefcase className="h-3 w-3 mr-1" />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`font-medium text-sm ${
+                                obligation.isPaid ? "line-through text-muted-foreground" : ""
+                              }`}
+                            >
+                              {obligation.name}
+                            </span>
+                            <Badge
+                              variant={obligation.type === "personal" ? "secondary" : "outline"}
+                              className="text-xs"
+                            >
+                              {obligation.type === "personal" ? (
+                                <User className="h-3 w-3 mr-1" />
+                              ) : (
+                                <Briefcase className="h-3 w-3 mr-1" />
+                              )}
+                              {obligation.type}
+                            </Badge>
+                          </div>
+                          <div className="flex gap-1">
+                            {obligation.websiteUrl && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                asChild
+                              >
+                                <a
+                                  href={obligation.websiteUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </a>
+                              </Button>
                             )}
-                            {obligation.type}
-                          </Badge>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handleEdit(obligation)}
+                            >
+                              <Settings className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                         <p className="font-mono text-sm tabular-nums mt-1">
                           {formatCurrency(obligation.amount)}
