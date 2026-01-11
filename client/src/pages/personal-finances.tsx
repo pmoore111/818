@@ -315,6 +315,7 @@ export default function PersonalFinances() {
     mutationFn: async ({ id, data }: { id: number; data: z.infer<typeof accountFormSchema> }) => {
       return apiRequest("PATCH", `/api/accounts/${id}`, {
         ...data,
+        balance: data.balance || "0",
         creditLimit: data.creditLimit || null,
         creditScore: data.creditScore ? parseInt(data.creditScore) : null,
         interestRate: data.interestRate || null,
