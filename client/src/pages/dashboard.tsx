@@ -187,16 +187,24 @@ export default function Dashboard() {
 
   const personalBalance = personalAccounts.reduce((sum, a) => {
     const balance = parseFloat(a.balance);
-    // Credit cards and loans are liabilities - subtract from total
-    if (a.category === "credit_card" || a.category === "loan") {
+    if (a.category === "credit_card") {
+      // For credit cards: available credit = credit limit - balance owed
+      const creditLimit = a.creditLimit ? parseFloat(a.creditLimit) : 0;
+      return sum + (creditLimit - balance);
+    } else if (a.category === "loan") {
+      // Loans are pure liabilities - subtract from total
       return sum - balance;
     }
     return sum + balance;
   }, 0);
   const businessBalance = businessAccounts.reduce((sum, a) => {
     const balance = parseFloat(a.balance);
-    // Credit cards and loans are liabilities - subtract from total
-    if (a.category === "credit_card" || a.category === "loan") {
+    if (a.category === "credit_card") {
+      // For credit cards: available credit = credit limit - balance owed
+      const creditLimit = a.creditLimit ? parseFloat(a.creditLimit) : 0;
+      return sum + (creditLimit - balance);
+    } else if (a.category === "loan") {
+      // Loans are pure liabilities - subtract from total
       return sum - balance;
     }
     return sum + balance;
